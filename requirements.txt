@@ -1,0 +1,8 @@
+kagglehub
+matplotlib
+mplsoccer
+pandas
+plotly
+tk
+tkinterweb
+kaleido
