@@ -22,7 +22,8 @@ warnings.filterwarnings("ignore")
 season_names = ['2024']
 gws = ['5']
 leagues = ['Serie_A']
-
+# Lista per memorizzare i nomi dei giocatori selezionati
+selected_players_list = []
 def scrape_understat(payload):
     #Build request using url, headers (mimicking what Firefox does normally)
     #Works best with verify=True as you won't get the ssl errors. Payload is
@@ -97,49 +98,68 @@ def season_data(season, league):
 
     return season_df
 
+
 def update_listbox(*args):
     search_term = search_entry.get().lower()
     listbox.delete(0, tk.END)
-
+    
     # Filtra i giocatori in base al termine di ricerca
     filtered_players = season[season["player_name"].str.lower().str.contains(search_term)]
+    
+    # Ottieni le selezioni correnti
+    current_selections = listbox.curselection()
+    
+    for player in filtered_players["player_name"]:
+        listbox.insert(tk.END, player)
+    
+    # Ripristina le selezioni precedenti
+    for idx in current_selections:
+        try:
+            # Trova l'indice del giocatore selezionato nella nuova lista
+            player_name = listbox.get(idx)
+            new_index = filtered_players[filtered_players["player_name"] == player_name].index[0]
+            listbox.selection_set(new_index)
+        except IndexError:
+            pass  # Ignora se l'indice non esiste più
 
-    # Memorizza gli ID filtrati per il confronto successivo
-    filtered_ids = []
-
-    for _, player in filtered_players.iterrows():
-        listbox.insert(tk.END, player["player_name"])
-        filtered_ids.append(player["id"])
-
-        # Se il giocatore è già selezionato, evidenzialo
-        if player["id"] in selected_players_ids:
-            listbox.selection_set(listbox.size() - 1)  # Seleziona l'ultimo elemento aggiunto
-
-    # Deseleziona gli ID non più presenti nella lista filtrata
-    for i in range(listbox.size()):
-        player_id = season.loc[season["player_name"] == listbox.get(i), "id"].values[0]
-        if player_id not in filtered_ids:
-            listbox.selection_clear(i)
-
-def select_players():
+def add_to_my_players():
     selected_indices = listbox.curselection()
     selected_players = [listbox.get(i) for i in selected_indices]
 
-    if not selected_players:  # Verifica se ci sono giocatori selezionati
-        messagebox.showerror("No Selection", "Please select at least one player.")
-        return  # Esci dalla funzione se non ci sono selezioni
+    # Aggiungi i nuovi giocatori selezionati alla lista globale e alla lista "My Players"
+    for player_name in selected_players:
+        if player_name not in selected_players_list:
+            selected_players_list.append(player_name)
+            my_players_listbox.insert(tk.END, player_name)  # Aggiunge alla lista "My Players"
 
-    # Aggiorna la selezione degli ID dei giocatori
-    global selected_players_ids
-    selected_players_ids = [season.loc[season["player_name"] == player_name, "id"].values[0] for player_name in selected_players]
+    print("Lista dei giocatori selezionati:", selected_players_list)
 
-    print("Lista di ID selezionati:", selected_players_ids)
+def add_pos_to_my_players(position):
+    selected_players = season[season["position"] == position]["player_name"].tolist()
 
-    # Filtro il DataFrame con i giocatori selezionati
-    selected_players_df = season[season["id"].isin(selected_players_ids)]
+    for player_name in selected_players:
+        if player_name not in selected_players_list:
+            selected_players_list.append(player_name)
+            my_players_listbox.insert(tk.END, player_name)  # Aggiunge alla lista "My Players"
+
+def remove_from_my_players():
+    selected_indices = my_players_listbox.curselection()
+    players_to_remove = [my_players_listbox.get(i) for i in selected_indices]
+
+    for player_name in players_to_remove:
+        if player_name in selected_players_list:
+            selected_players_list.remove(player_name)
+            my_players_listbox.delete(my_players_listbox.get(0, tk.END).index(player_name))  # Rimuove dalla lista "My Players"
+
+    print("Lista aggiornata dei giocatori selezionati:", selected_players_list)
+
+def select_players():
+    # Filtro il DataFrame con i giocatori selezionati nella lista "My Players"
+    selected_players_df = season[season["player_name"].isin(selected_players_list)]
+    print(selected_players_df)
 
     if not selected_players_df.empty:  # Controlla se ci sono giocatori selezionati
-        messagebox.showinfo("Selected Players", f"{', '.join(selected_players)} selezionati!")
+        messagebox.showinfo("Selected Players", f"{', '.join(selected_players_list)} selezionati!")
 
         # Calcolo delle differenze e stato di performance
         selected_players_df['Goal_Diff'] = selected_players_df['goals_season'] - selected_players_df['xG_season']
@@ -177,6 +197,7 @@ def select_players():
                 'xA_season': True,
                 'Goal_Diff': True,
                 'Assist_Diff': True,
+                'position': True
             },
             labels={
                 'goals_season': 'Goals',
@@ -185,7 +206,8 @@ def select_players():
                 'xA_season': 'Expected Assists',
                 'Goal_Diff': 'Goal Difference',
                 'Assist_Diff': 'Assist Difference',
-                'Status': 'Performance Status'
+                'Status': 'Performance Status',
+                'position': 'Pos'
             },
             title="Player Performance: Goal vs Assist Difference"
         )
@@ -194,28 +216,53 @@ def select_players():
     else:
         messagebox.showerror("No Selection", "Please select at least one player.")
 
+
+#---------------------MAIN----------------------------
 season = season_data(season_names[0], leagues[0])
 
+# Configurazione della GUI
 root = tk.Tk()
 root.title("Player Selection for Performance Analysis")
-root.geometry("400x600")
+root.geometry("800x600")
 
+# Lista principale
 label = tk.Label(root, text="Select Players", font=("Arial", 14))
-label.pack(pady=10)
+label.grid(row=0, column=0, padx=10, pady=10, sticky="n")
 
 search_entry = tk.Entry(root, width=50)
-search_entry.pack(pady=5)
+search_entry.grid(row=1, column=0, padx=10, pady=5)
 search_entry.insert(0, "Cerca giocatore...")
 search_entry.bind("<KeyRelease>", update_listbox)
 
 listbox = tk.Listbox(root, selectmode="multiple", width=50, height=20)
-listbox.pack()
+listbox.grid(row=2, column=0, padx=10, pady=10)
 
-# Inserisci tutti i giocatori inizialmente nella Listbox
-for _, player in season.iterrows():
-    listbox.insert(tk.END, player["player_name"])
+for player in season["player_name"]:
+    listbox.insert(tk.END, player)
 
-button = tk.Button(root, text="Analyze Selected Players", command=select_players)
-button.pack(pady=20)
+# Bottoni per aggiungere e rimuovere giocatori
+add_button = tk.Button(root, text="Add to My Players", command=add_to_my_players)
+add_button.grid(row=3, column=0, pady=10)
+
+remove_button = tk.Button(root, text="Remove from My Players", command=remove_from_my_players)
+remove_button.grid(row=3, column=1, pady=10)
+
+# Bottoni per aggiungere giocatori fast
+
+label = tk.Label(root, text="Fast select", font=("Arial", 14))
+label.grid(row=0, column=2, padx=10, pady=10, sticky="n")
+
+
+# Lista "My Players"
+my_players_label = tk.Label(root, text="My Players", font=("Arial", 14))
+my_players_label.grid(row=0, column=1, padx=10, pady=10, sticky="n")
+
+my_players_listbox = tk.Listbox(root, selectmode="multiple", width=50, height=20)
+my_players_listbox.grid(row=2, column=1, padx=10, pady=10)
+
+
+# Bottone per l'analisi
+analyze_button = tk.Button(root, text="Analyze Selected Players", command=select_players)
+analyze_button.grid(row=5, column=0, columnspan=2, pady=20)
 
 root.mainloop()
