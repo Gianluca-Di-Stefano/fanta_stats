@@ -18,12 +18,11 @@ import streamlit as st
 import plotly.express as px
 
 # season_names = ['2014', '2015', '2016', '2017', '2018', '2019']
-# gws = ['3', '5', '10']
 # leagues = ['EPL', 'La_liga', 'Bundesliga', 'Serie_A', 'Ligue_1']
 
-season_names = ['2024']
+season_names = ['2022', '2023', '2024']
 gws = ['5']
-leagues = ['Serie_A']
+leagues = ['EPL', 'La_liga', 'Bundesliga', 'Serie_A', 'Ligue_1']
 # Lista per memorizzare i nomi dei giocatori selezionati
 selected_players_list = []
 
@@ -75,8 +74,7 @@ def gw_data(season , league,  no_of_gw):
     return gw_df
 
 def season_data(season, league):
-    st.info(f"Getting data for season {season}/{int(season)+1}")
-    st.info(f"League {league}")
+    st.info(f"Getting data for {league} season {season}/{int(season)+1} ")
     json_player_data = scrape_understat({'league': league, 'season':season})
     season_table = pd.DataFrame(json_player_data)
     season_df = clean_df(season_table, 'season')
@@ -94,8 +92,7 @@ def season_data(season, league):
     season_df["npg_season"] = season_df["npg_season"].astype(int)
     season_df["npxG_season"] = round(season_df["npxG_season"].astype(float), 2)
 
-    season_df.to_csv(r'{}_whole_season_data.csv'.format(season), encoding='utf-8', index=False)
-    st.success('csv file for {} season loaded'.format(season))
+    st.success('data loaded')
 
     return season_df
 
@@ -168,17 +165,66 @@ def select_players(selected_players_list):
 
 #---------------------MAIN----------------------------
 
+# Inizializza `season` in `session_state` se non esiste ancora
+if "season" not in st.session_state:
+    st.session_state.season = pd.DataFrame()
+
 st.title("FANTA STATS")
 st.header("Welcome to fantastats app!")
 
-season = season_data(season_names[0], leagues[0])
+#Liste per scegliere stagione e campionato
+league_name = st.selectbox("Select league", leagues)
+season_name = st.selectbox("Select season", season_names)
 
-st.divider()
-st.subheader("Player performance: Overrated vs Underrated")
-selected_players_list = st.multiselect("Chose players", season["player_name"])
-button_calculate_stats = st.button("Calculate Und/Ovrr") 
+button_upload_season = st.button("upload dataset")
 
-if button_calculate_stats:
-    select_players(selected_players_list)
+if button_upload_season:
+    st.session_state.season = season_data(season_name, league_name)
 
-st.divider()
+if not st.session_state.season.empty:
+    season = st.session_state.season
+    st.divider()
+    st.subheader("Player performance: Overrated vs Underrated")
+    st.write("You can:")
+    st.write("- Import your players file") 
+    st.write("- Chose your file from list below")
+    st.write("- Export your players list for future loading")
+    st.write("- Calculate underrated/overrated scatterplot of selected players")
+
+    # Bottone per importare una lista di giocatori da un file
+    uploaded_file = st.file_uploader("Import players from file", type="csv")
+
+    # Lista di giocatori importati
+    imported_player_names = []
+
+    # Se è stato caricato un file, leggilo e riempi la lista dei giocatori importati
+    if uploaded_file is not None:
+        # Legge il file CSV caricato
+        imported_players_df = pd.read_csv(uploaded_file)
+        
+        # Aggiungi alla lista i nomi dei giocatori importati
+        imported_player_names = imported_players_df["player_name"].tolist()
+        st.success(f"Imported players")
+
+    # Selettore multiplo per i giocatori, precompilato con i giocatori importati
+    selected_players_list = st.multiselect("Choose players", season["player_name"], default=imported_player_names)
+
+    # Bottone per calcolare le statistiche
+    if st.button("Calculate Und/Ovrr"):
+        select_players(selected_players_list)
+
+    # Bottone per esportare i giocatori selezionati
+    if selected_players_list:
+        # Crea un DataFrame solo con i giocatori selezionati
+        selected_players_df = season[season["player_name"].isin(selected_players_list)]
+        
+        # Conversione del DataFrame in CSV
+        csv = selected_players_df.to_csv(index=False).encode('utf-8')
+        
+        # Bottone per scaricare il file CSV
+        st.download_button(
+            label="Export players to file",
+            data=csv,
+            file_name="selected_players.csv",
+            mime="text/csv"
+        )
