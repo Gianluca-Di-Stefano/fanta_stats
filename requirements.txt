@@ -6,3 +6,5 @@ plotly
 tk
 tkinterweb
 kaleido
+streamlit
+plotly_express
